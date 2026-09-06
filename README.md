@@ -1,6 +1,8 @@
 # IconCatcherLoader
 
-IconCatcherLoader is an x86 Windows GUI loader for IconCatcher 4.2.0.37.
+IconCatcherLoader is an x86 Windows GUI loader for Icon Catcher 4.2.37
+(file version 4.2.0.37). The executable contains an outdated product-version
+value of 4.1.0.37, while its About box identifies the product as version 4.2.37.
 It does not modify IconCatcher.exe on disk and does not open a console window.
 
 The Visual Studio 2015 solution contains these projects:
@@ -40,6 +42,7 @@ Windows component must be installed or enabled first.
 
 | Windows version | Framework supplied by Windows | Preferred package |
 | --- | --- | --- |
+| Windows 2000 SP4 | None | None without installing .NET Framework |
 | Windows XP, including XP SP3 | None | None without installing .NET Framework |
 | Windows Vista | 2.0 and 3.0 | `IconCatcherLoader.Net20` |
 | Windows 7 | 3.5.1 | `IconCatcherLoader.Net35Client` |
@@ -69,6 +72,11 @@ If .NET Framework has been installed separately, use this shorter rule:
 | 3.5 or 3.5.1 | `IconCatcherLoader.Net35Client` |
 | 4.0 through 4.7.2 | `IconCatcherLoader.Net40Client` |
 | 4.8 or 4.8.1 | `IconCatcherLoader.Net48` |
+
+Windows 2000 SP4 has been tested successfully with
+`IconCatcherLoader.Net20` after .NET Framework 2.0 SP1 has been installed.
+Installing .NET Framework 2.0 SP1 on Windows 2000 requires update KB835732 or
+an update rollup that includes it.
 
 In particular, Windows XP SP3 and Windows Server 2003 SP2 can run
 `IconCatcherLoader.Net40Client` after .NET Framework 4.0 has been installed.
