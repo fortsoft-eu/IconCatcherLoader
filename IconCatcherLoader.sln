@@ -2,7 +2,13 @@
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconCatcherLoader", "IconCatcherLoader\IconCatcherLoader.csproj", "{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconCatcherLoader.Net20", "IconCatcherLoader.Net20\IconCatcherLoader.Net20.csproj", "{41A0DD88-4FD4-4D44-9E18-DA90C82043E9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconCatcherLoader.Net35Client", "IconCatcherLoader.Net35Client\IconCatcherLoader.Net35Client.csproj", "{0C2D625B-518D-4A10-B6DC-5573107E2C01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconCatcherLoader.Net40Client", "IconCatcherLoader.Net40Client\IconCatcherLoader.Net40Client.csproj", "{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IconCatcherLoader.Net48", "IconCatcherLoader.Net48\IconCatcherLoader.Net48.csproj", "{C72D1D4A-E68B-4D90-88E5-AC7449E2C97B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -10,10 +16,22 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{41A0DD88-4FD4-4D44-9E18-DA90C82043E9}.Debug|x86.ActiveCfg = Debug|x86
+		{41A0DD88-4FD4-4D44-9E18-DA90C82043E9}.Debug|x86.Build.0 = Debug|x86
+		{41A0DD88-4FD4-4D44-9E18-DA90C82043E9}.Release|x86.ActiveCfg = Release|x86
+		{41A0DD88-4FD4-4D44-9E18-DA90C82043E9}.Release|x86.Build.0 = Release|x86
+		{0C2D625B-518D-4A10-B6DC-5573107E2C01}.Debug|x86.ActiveCfg = Debug|x86
+		{0C2D625B-518D-4A10-B6DC-5573107E2C01}.Debug|x86.Build.0 = Debug|x86
+		{0C2D625B-518D-4A10-B6DC-5573107E2C01}.Release|x86.ActiveCfg = Release|x86
+		{0C2D625B-518D-4A10-B6DC-5573107E2C01}.Release|x86.Build.0 = Release|x86
 		{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}.Debug|x86.ActiveCfg = Debug|x86
 		{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}.Debug|x86.Build.0 = Debug|x86
 		{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}.Release|x86.ActiveCfg = Release|x86
 		{B8F70C2A-1417-4EBA-88A6-5917A7EE27A3}.Release|x86.Build.0 = Release|x86
+		{C72D1D4A-E68B-4D90-88E5-AC7449E2C97B}.Debug|x86.ActiveCfg = Debug|x86
+		{C72D1D4A-E68B-4D90-88E5-AC7449E2C97B}.Debug|x86.Build.0 = Debug|x86
+		{C72D1D4A-E68B-4D90-88E5-AC7449E2C97B}.Release|x86.ActiveCfg = Release|x86
+		{C72D1D4A-E68B-4D90-88E5-AC7449E2C97B}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

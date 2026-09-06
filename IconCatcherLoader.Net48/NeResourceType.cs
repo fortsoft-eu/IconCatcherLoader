@@ -21,22 +21,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  **
- * Version 1.0.0.0
+ * Last modified for version 2.0.0.0
  */
 
-using System;
+using System.Collections.Generic;
 
 namespace IconCatcherLoader {
 
-    /// <summary>Stores criteria and results used while enumerating windows.</summary>
-    internal sealed class SearchState {
-        /// <summary>Identifies the process whose windows are being searched.</summary>
-        internal int ProcessId;
+    /// <summary>Groups numeric resources of one Win32 resource type.</summary>
+    internal sealed class NeResourceType {
+        private readonly ushort typeId;
+        private readonly List<NeResource> resources;
 
-        /// <summary>Stores the matching top-level window.</summary>
-        internal IntPtr Window;
+        /// <summary>Initializes an empty group for the specified resource type.</summary>
+        /// <param name="typeId">The numeric Win32 resource type.</param>
+        internal NeResourceType(ushort typeId) {
+            this.typeId = typeId;
+            resources = new List<NeResource>();
+        }
 
-        /// <summary>Indicates whether the requested button was found.</summary>
-        internal bool Found;
+        /// <summary>Gets the numeric Win32 resource type.</summary>
+        internal ushort TypeId {
+            get {
+                return typeId;
+            }
+        }
+
+        /// <summary>Gets the resources in this group.</summary>
+        internal List<NeResource> Resources {
+            get {
+                return resources;
+            }
+        }
+
+        /// <summary>Gets or sets the .rsrc-relative type-directory offset.</summary>
+        internal int DirectoryOffset { get; set; }
     }
 }

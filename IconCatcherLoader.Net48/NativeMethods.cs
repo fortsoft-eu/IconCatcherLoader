@@ -21,18 +21,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  **
- * Version 1.0.0.0
+ * Last modified for version 2.0.0.0
  */
 
 using System;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace IconCatcherLoader {
 
     /// <summary>
-    /// Contains the Win32 constants, data structures, delegates, and platform
-    /// invocation declarations used by the loader.
+    /// Contains the Win32 constants, delegates, and platform invocation
+    /// declarations used by the loader.
     /// </summary>
     internal static class NativeMethods {
         /// <summary>Enables operations on a process address space.</summary>
@@ -67,47 +66,6 @@ namespace IconCatcherLoader {
 
         /// <summary>Enables reading, writing, and execution for a memory page.</summary>
         internal const uint PageExecuteReadWrite = 0x40;
-
-        /// <summary>Requests that a window close.</summary>
-        internal const uint WmClose = 0x0010;
-
-        /// <summary>Requests the owner window from GetWindow.</summary>
-        internal const uint GwOwner = 4;
-
-        /// <summary>Defines a callback that receives enumerated windows.</summary>
-        /// <param name="window">The handle of the window being enumerated.</param>
-        /// <param name="parameter">The application-defined callback value.</param>
-        /// <returns><see langword="true"/> to continue enumeration; otherwise, <see langword="false"/>.</returns>
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
-
-        /// <summary>
-        /// Describes a contiguous range of pages in the virtual address space of a
-        /// 32-bit process.
-        /// </summary>
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct MemoryBasicInformation {
-            /// <summary>Gets or sets the base address of the region.</summary>
-            internal IntPtr BaseAddress;
-
-            /// <summary>Gets or sets the base address of the original allocation.</summary>
-            internal IntPtr AllocationBase;
-
-            /// <summary>Gets or sets the protection used when the region was allocated.</summary>
-            internal uint AllocationProtect;
-
-            /// <summary>Gets or sets the size of the region, in bytes.</summary>
-            internal UIntPtr RegionSize;
-
-            /// <summary>Gets or sets the state of the pages in the region.</summary>
-            internal uint State;
-
-            /// <summary>Gets or sets the current access protection.</summary>
-            internal uint Protect;
-
-            /// <summary>Gets or sets the type of pages in the region.</summary>
-            internal uint Type;
-        }
 
         /// <summary>Opens an existing local process.</summary>
         /// <param name="desiredAccess">The access rights requested for the process handle.</param>
@@ -162,6 +120,18 @@ namespace IconCatcherLoader {
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size, uint freeType);
 
+        /// <summary>Changes the protection of committed pages in another process.</summary>
+        /// <param name="process">A handle to the process that owns the pages.</param>
+        /// <param name="address">The first address in the region whose protection is changed.</param>
+        /// <param name="size">The size of the region, in bytes.</param>
+        /// <param name="newProtection">The requested memory protection.</param>
+        /// <param name="oldProtection">Receives the previous memory protection.</param>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool VirtualProtectEx(IntPtr process, IntPtr address, UIntPtr size,
+            uint newProtection, out uint oldProtection);
+
         /// <summary>Flushes the processor instruction cache for a process.</summary>
         /// <param name="process">A handle to the process whose instruction cache is flushed.</param>
         /// <param name="baseAddress">The first address in the region to flush.</param>
@@ -180,6 +150,18 @@ namespace IconCatcherLoader {
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern UIntPtr VirtualQueryEx(IntPtr process, IntPtr address, out MemoryBasicInformation buffer, UIntPtr length);
 
+        /// <summary>Converts text from the current Windows ANSI code page to Unicode.</summary>
+        /// <param name="codePage">The source code page; zero selects the current ANSI code page.</param>
+        /// <param name="flags">Conversion behavior flags.</param>
+        /// <param name="multiByteText">The source byte array.</param>
+        /// <param name="byteCount">The number of source bytes to convert.</param>
+        /// <param name="wideText">The destination character array, or null to query its required size.</param>
+        /// <param name="characterCount">The capacity of the destination array.</param>
+        /// <returns>The number of Unicode characters written or required.</returns>
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        internal static extern int MultiByteToWideChar(uint codePage, uint flags,
+            byte[] multiByteText, int byteCount, [Out] char[] wideText, int characterCount);
+
         /// <summary>Closes an open object handle.</summary>
         /// <param name="handle">The handle to close.</param>
         /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
@@ -196,68 +178,5 @@ namespace IconCatcherLoader {
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         internal static extern int MessageBox(IntPtr owner, string text, string caption, uint type);
 
-        /// <summary>Enumerates top-level windows.</summary>
-        /// <param name="callback">The callback invoked for each top-level window.</param>
-        /// <param name="parameter">An application-defined value passed to the callback.</param>
-        /// <returns><see langword="true"/> if enumeration completes; otherwise, <see langword="false"/>.</returns>
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool EnumWindows(EnumWindowCallback callback, IntPtr parameter);
-
-        /// <summary>Enumerates child windows that belong to a parent window.</summary>
-        /// <param name="parent">The handle of the parent window.</param>
-        /// <param name="callback">The callback invoked for each child window.</param>
-        /// <param name="parameter">An application-defined value passed to the callback.</param>
-        /// <returns><see langword="true"/> if enumeration completes; otherwise, <see langword="false"/>.</returns>
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool EnumChildWindows(IntPtr parent, EnumWindowCallback callback, IntPtr parameter);
-
-        /// <summary>Retrieves the process identifier associated with a window.</summary>
-        /// <param name="window">The handle of the window.</param>
-        /// <param name="processId">Receives the identifier of the process that created the window.</param>
-        /// <returns>The identifier of the thread that created the window.</returns>
-        [DllImport("user32.dll")]
-        internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-        /// <summary>Determines whether a window is visible.</summary>
-        /// <param name="window">The handle of the window to test.</param>
-        /// <returns><see langword="true"/> if the window is visible; otherwise, <see langword="false"/>.</returns>
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool IsWindowVisible(IntPtr window);
-
-        /// <summary>Retrieves a window related to the specified window.</summary>
-        /// <param name="window">The handle of the source window.</param>
-        /// <param name="command">The relationship between the source and requested windows.</param>
-        /// <returns>The related window handle, or <see cref="IntPtr.Zero"/> if no such window exists.</returns>
-        [DllImport("user32.dll")]
-        internal static extern IntPtr GetWindow(IntPtr window, uint command);
-
-        /// <summary>Retrieves the class name of a window.</summary>
-        /// <param name="window">The handle of the window.</param>
-        /// <param name="className">The buffer that receives the class name.</param>
-        /// <param name="maximumCount">The capacity of <paramref name="className"/>, in characters.</param>
-        /// <returns>The number of characters copied, or zero if the operation fails.</returns>
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        internal static extern int GetClassName(IntPtr window, StringBuilder className, int maximumCount);
-
-        /// <summary>Retrieves the title or text of a window.</summary>
-        /// <param name="window">The handle of the window.</param>
-        /// <param name="text">The buffer that receives the window text.</param>
-        /// <param name="maximumCount">The capacity of <paramref name="text"/>, in characters.</param>
-        /// <returns>The number of characters copied, or zero if the window has no text or the operation fails.</returns>
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        internal static extern int GetWindowText(IntPtr window, StringBuilder text, int maximumCount);
-
-        /// <summary>Posts a message to a window-owning thread.</summary>
-        /// <param name="window">The handle of the window that receives the message.</param>
-        /// <param name="message">The message identifier.</param>
-        /// <param name="wParam">Additional message-specific information.</param>
-        /// <param name="lParam">Additional message-specific information.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     }
 }
