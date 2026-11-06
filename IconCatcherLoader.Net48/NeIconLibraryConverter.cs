@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This is open-source software licensed under the terms of the MIT License.
  *
  * Copyright (c) 2026 Petr Červinka - FortSoft <cervinka@fortsoft.eu>
@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  **
- * Last modified for version 2.0.0.0
+ * Last modified for version 2.1.0.0
  */
 
 using System;
@@ -159,8 +159,11 @@ namespace IconCatcherLoader {
                     currentType = new NeResourceType(resource.TypeId);
                     types.Add(currentType);
                 }
-                if (currentType.Resources.Count != 0 && currentType.Resources[currentType.Resources.Count - 1].ResourceId == resource.ResourceId) {
-                    throw new InvalidDataException("The NE library contains duplicate numeric resource identifiers.");
+                if (currentType.Resources.Count != 0
+                    && currentType.Resources[currentType.Resources.Count - 1].ResourceId
+                        == resource.ResourceId) {
+                    throw new InvalidDataException(
+                        "The NE library contains duplicate numeric resource identifiers.");
                 }
                 currentType.Resources.Add(resource);
             }
@@ -211,7 +214,8 @@ namespace IconCatcherLoader {
                     WriteUInt32(section, languageEntry, 0);
                     WriteUInt32(section, languageEntry + 4, (uint)resource.DataEntryOffset);
 
-                    WriteUInt32(section, resource.DataEntryOffset, (uint)(ResourceSectionRva + resource.DataOffset));
+                    WriteUInt32(section, resource.DataEntryOffset,
+                        (uint)(ResourceSectionRva + resource.DataOffset));
                     WriteUInt32(section, resource.DataEntryOffset + 4, (uint)resource.Data.Length);
                     Buffer.BlockCopy(resource.Data, 0, section, resource.DataOffset, resource.Data.Length);
                 }
@@ -295,11 +299,13 @@ namespace IconCatcherLoader {
 
             string temporaryPath;
             do {
-                temporaryPath = Path.Combine(directory, "." + Path.GetFileName(dllPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+                temporaryPath = Path.Combine(directory, "." + Path.GetFileName(dllPath)
+                    + "." + Guid.NewGuid().ToString("N") + ".tmp");
             } while (File.Exists(temporaryPath));
 
             try {
-                using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew,
+                        FileAccess.Write, FileShare.None)) {
                     stream.Write(image, 0, image.Length);
                     stream.Flush();
                 }
@@ -363,7 +369,8 @@ namespace IconCatcherLoader {
         /// <summary>Rejects truncated or otherwise invalid file ranges.</summary>
         private static void EnsureRange(byte[] buffer, int offset, int length) {
             if (offset < 0 || length < 0 || offset > buffer.Length - length) {
-                throw new InvalidDataException("The icon library contains an invalid or truncated structure.");
+                throw new InvalidDataException(
+                    "The icon library contains an invalid or truncated structure.");
             }
         }
     }

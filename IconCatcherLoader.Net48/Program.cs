@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This is open-source software licensed under the terms of the MIT License.
  *
  * Copyright (c) 2026 Petr Červinka - FortSoft <cervinka@fortsoft.eu>
@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  **
- * Last modified for version 2.0.0.0
+ * Last modified for version 2.1.0.0
  */
 
 using System;
@@ -40,12 +40,12 @@ namespace IconCatcherLoader {
     /// Provides a loader for the 32-bit IconCatcher 4.2.0.37 executable.
     ///
     /// The loader does not modify IconCatcher.exe on disk. It starts the executable,
-    /// waits for the protected image to unpack in memory, and redirects the
-    /// actSaveIcon OnExecute event and both direct "Save Selected..." OnClick events
-    /// to a small hook installed in the target process. The hook invokes the original
-    /// actSaveIconExecute method, clears the form field at offset 0x524 after the
-    /// method returns, and destroys the TAgSaveDialog instance so that a subsequent
-    /// save operation can create and display a new instance.
+    /// waits for the protected image to unpack in memory, and redirects the actSaveIcon
+    /// and actiSave OnExecute events and both direct "Save Selected..." OnClick events
+    /// to small hooks installed in the target process. Each hook invokes the
+    /// corresponding original handler, clears the form field at offset 0x524 after
+    /// the method returns, and destroys the TAgSaveDialog instance so that a
+    /// subsequent save operation can create and display a new instance.
     ///
     /// The loader also changes one conditional branch in process memory so that the
     /// intermediate activation dialog is bypassed before it can be displayed. It
@@ -65,8 +65,9 @@ namespace IconCatcherLoader {
     ///     actSaveIcon + 0x3C  OnUpdate.Data
     ///
     /// The main-menu and context-menu items also store direct copies of the same
-    /// method at offset 0x80. The loader therefore replaces three four-byte Code
-    /// values. It does not modify the Self pointers or the original OnUpdate event.
+    /// method at offset 0x80. The loader therefore replaces four four-byte Code
+    /// values: three for Save Selected and one for Save. It does not modify the Self
+    /// pointers or the original OnUpdate events.
     /// </summary>
     internal static class Program {
         // The following addresses and offsets were identified by analyzing the
@@ -77,6 +78,12 @@ namespace IconCatcherLoader {
 
         // TfmMainIconCatcherWindow.actSaveIconUpdate.
         private const uint UpdateHandler = 0x004C1B70;
+
+        // TfmMainIconCatcherWindow.actiSaveExecute.
+        private const uint OutputSaveHandler = 0x004C1E74;
+
+        // TfmMainIconCatcherWindow.actiSaveUpdate.
+        private const uint OutputSaveUpdateHandler = 0x004C122C;
 
         // Conditional branch that leads to the intermediate activation dialog.
         private const uint ActivationDialogBranch = 0x004C1001;
@@ -116,6 +123,9 @@ namespace IconCatcherLoader {
         // Offset of the main-form field that contains the actSaveIcon pointer.
         private const int ActionFieldOffset = 0x46C;
 
+        // Offset of the main-form field that contains the actiSave pointer.
+        private const int OutputSaveActionFieldOffset = 0x4C4;
+
         // Offset of the main-form field that contains the TAgSaveDialog pointer.
         private const int SaveDialogFieldOffset = 0x524;
 
@@ -148,7 +158,8 @@ namespace IconCatcherLoader {
 
         // SHA-256 of the analyzed executable. This prevents fixed addresses from
         // being used with another version that may contain unrelated data or code.
-        private const string ExpectedSha256 = "B0583B666869A1446B4F656AE74351E8E9245BA5D4333D5481BA2959338CE50E";
+        private const string ExpectedSha256 =
+            "B0583B666869A1446B4F656AE74351E8E9245BA5D4333D5481BA2959338CE50E";
 
         /// <summary>Provides the application entry point.</summary>
         /// <remarks>
@@ -171,7 +182,8 @@ namespace IconCatcherLoader {
                 // target locates its companion files in the normal location.
                 string workingDirectory = Path.GetDirectoryName(executable);
                 if (workingDirectory == null) {
-                    throw new InvalidOperationException("The IconCatcher working directory could not be determined.");
+                    throw new InvalidOperationException(
+                        "The IconCatcher working directory could not be determined.");
                 }
 
                 ProcessStartInfo startInfo = new ProcessStartInfo();
@@ -202,24 +214,31 @@ namespace IconCatcherLoader {
                 }
 
                 // ASProtect unpacks the executable before Delphi creates the main form
-                // and actSaveIcon. Poll the address space for up to 20 seconds.
+                // and its actions. Poll the address space for up to 20 seconds.
                 Stopwatch timeout = Stopwatch.StartNew();
                 while (timeout.Elapsed < TimeSpan.FromSeconds(20)) {
                     if (process.HasExited) {
-                        throw new InvalidOperationException("IconCatcher exited before the hook was installed.");
+                        throw new InvalidOperationException(
+                            "IconCatcher exited before the hook was installed.");
                     }
 
                     // A zero value means that the object is not present yet or that no
                     // sufficiently reliable match was found.
                     IntPtr action = FindAction(processHandle);
                     if (action != IntPtr.Zero) {
-                        byte[] formData = Read(processHandle, AddOffset(action, OnExecuteOffset + sizeof(uint)), sizeof(uint));
+                        byte[] formData = Read(processHandle, AddOffset(action,
+                            OnExecuteOffset + sizeof(uint)), sizeof(uint));
                         if (formData == null) {
                             Thread.Sleep(10);
                             continue;
                         }
 
                         uint form = BitConverter.ToUInt32(formData, 0);
+                        IntPtr outputSaveAction = FindOutputSaveAction(processHandle, form);
+                        if (outputSaveAction == IntPtr.Zero) {
+                            Thread.Sleep(10);
+                            continue;
+                        }
                         List<IntPtr> menuCallbacks = FindMenuCallbacks(processHandle, form);
                         if (menuCallbacks.Count != ExpectedMenuCallbackCount) {
                             Thread.Sleep(10);
@@ -229,8 +248,10 @@ namespace IconCatcherLoader {
                         DisableActivationDialog(processHandle);
                         DisableSaveLibraryEarlyExit(processHandle);
                         IntPtr saveLibraryState = InstallSaveLibraryWriterFallback(processHandle);
-                        IntPtr hook = InstallSaveHook(processHandle);
-                        RedirectToHook(processHandle, action, menuCallbacks, hook);
+                        IntPtr saveSelectedHook = InstallSaveHook(processHandle, ExecuteHandler);
+                        IntPtr outputSaveHook = InstallSaveHook(processHandle, OutputSaveHandler);
+                        RedirectToHook(processHandle, action, menuCallbacks, saveSelectedHook);
+                        RedirectActionToHook(processHandle, outputSaveAction, outputSaveHook);
 
                         // Keep the loader alive so it can convert every completed ICL
                         // export. The method returns only after IconCatcher exits.
@@ -241,8 +262,8 @@ namespace IconCatcherLoader {
                     // A short delay limits CPU usage while polling.
                     Thread.Sleep(10);
                 }
-
-                throw new TimeoutException("The actSaveIcon object was not found before the timeout expired.");
+                throw new TimeoutException(
+                    "The actSaveIcon object was not found before the timeout expired.");
             } catch (Exception exception) {
                 Debug.WriteLine(exception);
                 // The WinExe output type has no console, so display errors in a native
@@ -349,7 +370,8 @@ namespace IconCatcherLoader {
         /// <summary>Adds a directory obtained from a Windows special-folder value.</summary>
         /// <param name="searchRoots">The ordered collection of search roots.</param>
         /// <param name="specialFolder">The special folder to resolve.</param>
-        private static void AddSpecialFolderSearchRoot(List<string> searchRoots, Environment.SpecialFolder specialFolder) {
+        private static void AddSpecialFolderSearchRoot(List<string> searchRoots,
+                Environment.SpecialFolder specialFolder) {
             try {
                 AddSearchRoot(searchRoots, Environment.GetFolderPath(specialFolder));
             } catch (ArgumentException exception) {
@@ -396,19 +418,19 @@ namespace IconCatcherLoader {
 
         /// <summary>Determines whether a path names the root of a drive or share.</summary>
         /// <param name="path">The absolute directory path to test.</param>
-        /// <returns><see langword="true"/> for a filesystem root; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> for a filesystem root; otherwise, <see langword="false"/>.
+        /// </returns>
         private static bool IsDriveRoot(string path) {
             string root = Path.GetPathRoot(path);
             if (string.IsNullOrEmpty(root)) {
                 return false;
             }
-
             char[] separators = new char[] {
                 Path.DirectorySeparatorChar,
                 Path.AltDirectorySeparatorChar
             };
-
-            return string.Equals(path.TrimEnd(separators), root.TrimEnd(separators), StringComparison.OrdinalIgnoreCase);
+            return string.Equals(path.TrimEnd(separators), root.TrimEnd(separators),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>Searches one Program Files or application-data directory.</summary>
@@ -421,7 +443,6 @@ namespace IconCatcherLoader {
             if (executable != null) {
                 return executable;
             }
-
             return FindIconCatcherInParent(searchRoot);
         }
 
@@ -431,7 +452,8 @@ namespace IconCatcherLoader {
         private static string FindIconCatcherInParent(string parentDirectory) {
             // Test the common unversioned names directly. This can still succeed if
             // directory enumeration is denied but the complete path is accessible.
-            string executable = FindIconCatcherInProductDirectory(Path.Combine(parentDirectory, ProductDirectoryName));
+            string executable = FindIconCatcherInProductDirectory(Path.Combine(parentDirectory,
+                ProductDirectoryName));
             if (executable != null) {
                 return executable;
             }
@@ -534,7 +556,8 @@ namespace IconCatcherLoader {
         private static bool CanTraverseDirectory(string directory) {
             try {
                 FileAttributes attributes = File.GetAttributes(directory);
-                return (attributes & FileAttributes.Directory) != 0 && (attributes & FileAttributes.ReparsePoint) == 0;
+                return (attributes & FileAttributes.Directory) != 0
+                    && (attributes & FileAttributes.ReparsePoint) == 0;
             } catch (UnauthorizedAccessException exception) {
                 Debug.WriteLine(exception);
                 return false;
@@ -555,7 +578,8 @@ namespace IconCatcherLoader {
 
         /// <summary>Returns child directories without propagating access failures.</summary>
         /// <param name="directory">The directory whose immediate children are requested.</param>
-        /// <returns>The accessible child paths, or an empty array when the directory cannot be enumerated.</returns>
+        /// <returns>The accessible child paths, or an empty array when the directory cannot be enumerated.
+        /// </returns>
         private static string[] GetDirectoriesSafely(string directory) {
             try {
                 return Directory.Exists(directory) ? Directory.GetDirectories(directory) : new string[0];
@@ -579,10 +603,12 @@ namespace IconCatcherLoader {
 
         /// <summary>Determines whether a file exists and can be opened for reading.</summary>
         /// <param name="path">The file to test.</param>
-        /// <returns><see langword="true"/> when the file is readable; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> when the file is readable; otherwise, <see langword="false"/>.
+        /// </returns>
         private static bool IsReadableFile(string path) {
             try {
-                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) {
+                using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete)) {
                     return true;
                 }
             } catch (UnauthorizedAccessException exception) {
@@ -668,7 +694,9 @@ namespace IconCatcherLoader {
         /// <returns><see langword="true"/> only for the supported readable binary.</returns>
         private static bool IsSupportedExecutable(string executable) {
             try {
-                if (string.IsNullOrEmpty(executable) || !Path.IsPathRooted(executable) || !IsReadableFile(executable)) {
+                if (string.IsNullOrEmpty(executable)
+                        || !Path.IsPathRooted(executable)
+                        || !IsReadableFile(executable)) {
                     return false;
                 }
             } catch (ArgumentException exception) {
@@ -710,7 +738,8 @@ namespace IconCatcherLoader {
             }
 
             if (!actual.Equals(ExpectedSha256, StringComparison.OrdinalIgnoreCase)) {
-                throw new InvalidOperationException("IconCatcher.exe is not the analyzed 4.2.0.37 binary. Its memory will not be modified.");
+                throw new InvalidOperationException(
+                    "IconCatcher.exe is not the analyzed 4.2.0.37 binary. Its memory will not be modified.");
             }
         }
 
@@ -730,29 +759,35 @@ namespace IconCatcherLoader {
 
             byte[] original = Read(process, address, expected.Length);
             if (!ByteArraysEqual(original, expected)) {
-                throw new InvalidOperationException("The expected activation dialog branch instruction was not found.");
+                throw new InvalidOperationException(
+                    "The expected activation dialog branch instruction was not found.");
             }
             uint oldProtection;
             if (!NativeMethods.VirtualProtectEx(process, address,
-                    new UIntPtr((uint)replacement.Length), NativeMethods.PageExecuteReadWrite, out oldProtection)) {
+                new UIntPtr((uint)replacement.Length), NativeMethods.PageExecuteReadWrite,
+                    out oldProtection)) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             try {
                 UIntPtr written;
                 if (!NativeMethods.WriteProcessMemory(process, address, replacement,
-                        new UIntPtr((uint)replacement.Length), out written) || written.ToUInt32() != (uint)replacement.Length) {
+                    new UIntPtr((uint)replacement.Length), out written) || written.ToUInt32()
+                        != (uint)replacement.Length) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
                 byte[] check = Read(process, address, expected.Length);
                 if (check == null || check[0] != replacement[0] || check[1] != expected[1]) {
-                    throw new InvalidOperationException("The activation dialog branch patch could not be verified.");
+                    throw new InvalidOperationException(
+                        "The activation dialog branch patch could not be verified.");
                 }
-                if (!NativeMethods.FlushInstructionCache(process, address, new UIntPtr((uint)replacement.Length))) {
+                if (!NativeMethods.FlushInstructionCache(process, address,
+                        new UIntPtr((uint)replacement.Length))) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
             } finally {
                 uint ignoredProtection;
-                NativeMethods.VirtualProtectEx(process, address, new UIntPtr((uint)replacement.Length), oldProtection, out ignoredProtection);
+                NativeMethods.VirtualProtectEx(process, address,
+                    new UIntPtr((uint)replacement.Length), oldProtection, out ignoredProtection);
             }
         }
 
@@ -776,25 +811,30 @@ namespace IconCatcherLoader {
 
             byte[] original = Read(process, address, expected.Length);
             if (!ByteArraysEqual(original, expected)) {
-                throw new InvalidOperationException("The expected Save Library branch instruction was not found.");
+                throw new InvalidOperationException(
+                    "The expected Save Library branch instruction was not found.");
             }
             uint oldProtection;
-            if (!NativeMethods.VirtualProtectEx(process, address, 
-                    new UIntPtr((uint)replacement.Length), NativeMethods.PageExecuteReadWrite, out oldProtection)) {
+            if (!NativeMethods.VirtualProtectEx(process, address,
+                new UIntPtr((uint)replacement.Length), NativeMethods.PageExecuteReadWrite,
+                    out oldProtection)) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
             try {
                 UIntPtr written;
                 if (!NativeMethods.WriteProcessMemory(process, address, replacement,
-                        new UIntPtr((uint)replacement.Length), out written) || written.ToUInt32() != (uint)replacement.Length) {
+                    new UIntPtr((uint)replacement.Length), out written) || written.ToUInt32()
+                        != (uint)replacement.Length) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
                 byte[] check = Read(process, address, replacement.Length);
                 if (!ByteArraysEqual(check, replacement)) {
-                    throw new InvalidOperationException("The Save Library branch patch could not be verified.");
+                    throw new InvalidOperationException(
+                        "The Save Library branch patch could not be verified.");
                 }
-                if (!NativeMethods.FlushInstructionCache(process, address, new UIntPtr((uint)replacement.Length))) {
+                if (!NativeMethods.FlushInstructionCache(process, address,
+                        new UIntPtr((uint)replacement.Length))) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
             } finally {
@@ -818,7 +858,8 @@ namespace IconCatcherLoader {
             };
             byte[] original = Read(process, callSite, expected.Length);
             if (!ByteArraysEqual(original, expected)) {
-                throw new InvalidOperationException("The expected Save Library writer instructions were not found.");
+                throw new InvalidOperationException(
+                    "The expected Save Library writer instructions were not found.");
             }
 
             byte[] code = new byte[] {
@@ -852,8 +893,9 @@ namespace IconCatcherLoader {
 
             int stateOffset = (code.Length + 3) & ~3;
             int allocationSize = stateOffset + SaveLibraryStateSize;
-            IntPtr hook = NativeMethods.VirtualAllocEx(process, IntPtr.Zero, new UIntPtr((uint)allocationSize),
-                NativeMethods.MemCommit | NativeMethods.MemReserve, NativeMethods.PageExecuteReadWrite);
+            IntPtr hook = NativeMethods.VirtualAllocEx(process, IntPtr.Zero,
+                new UIntPtr((uint)allocationSize), NativeMethods.MemCommit | NativeMethods.MemReserve,
+                NativeMethods.PageExecuteReadWrite);
             if (hook == IntPtr.Zero) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -861,7 +903,8 @@ namespace IconCatcherLoader {
             try {
                 long hookAddress = hook.ToInt64();
                 if (hookAddress < 0 || hookAddress > uint.MaxValue) {
-                    throw new InvalidOperationException("The Save Library hook was not allocated in the 32-bit address space.");
+                    throw new InvalidOperationException(
+                        "The Save Library hook was not allocated in the 32-bit address space.");
                 }
                 long stateAddress = hookAddress + stateOffset;
                 WriteRelativeDisplacement(code, 14, hookAddress + 18, ExportConstructor);
@@ -874,39 +917,44 @@ namespace IconCatcherLoader {
                 WriteRelativeDisplacement(code, 91, hookAddress + 95, SaveLibrarySuccessResume);
                 UIntPtr hookWritten;
                 if (!NativeMethods.WriteProcessMemory(process, hook, code,
-                        new UIntPtr((uint)code.Length), out hookWritten) || hookWritten.ToUInt32() != (uint)code.Length) {
+                    new UIntPtr((uint)code.Length), out hookWritten) || hookWritten.ToUInt32()
+                        != (uint)code.Length) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
 
                 if (!NativeMethods.FlushInstructionCache(process, hook, new UIntPtr((uint)code.Length))) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
-                byte[] redirect = new byte[] {
-                    0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90
-                };
-                WriteRelativeDisplacement(redirect, 1, SaveLibraryWriterCallSite + 5L, unchecked((uint)hookAddress));
+                byte[] redirect = new byte[] { 0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90 };
+                WriteRelativeDisplacement(redirect, 1, SaveLibraryWriterCallSite + 5L,
+                    unchecked((uint)hookAddress));
                 uint oldProtection;
                 if (!NativeMethods.VirtualProtectEx(process, callSite,
-                        new UIntPtr((uint)redirect.Length), NativeMethods.PageExecuteReadWrite, out oldProtection)) {
+                    new UIntPtr((uint)redirect.Length), NativeMethods.PageExecuteReadWrite,
+                        out oldProtection)) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
                 try {
                     UIntPtr redirectWritten;
                     if (!NativeMethods.WriteProcessMemory(process, callSite, redirect,
-                            new UIntPtr((uint)redirect.Length), out redirectWritten) || redirectWritten.ToUInt32() != (uint)redirect.Length) {
+                        new UIntPtr((uint)redirect.Length), out redirectWritten)
+                            || redirectWritten.ToUInt32() != (uint)redirect.Length) {
                         throw new Win32Exception(Marshal.GetLastWin32Error());
                     }
                     callSiteRedirected = true;
                     byte[] check = Read(process, callSite, redirect.Length);
                     if (!ByteArraysEqual(check, redirect)) {
-                        throw new InvalidOperationException("The Save Library fallback redirection could not be verified.");
+                        throw new InvalidOperationException(
+                            "The Save Library fallback redirection could not be verified.");
                     }
-                    if (!NativeMethods.FlushInstructionCache(process, callSite, new UIntPtr((uint)redirect.Length))) {
+                    if (!NativeMethods.FlushInstructionCache(process, callSite,
+                            new UIntPtr((uint)redirect.Length))) {
                         throw new Win32Exception(Marshal.GetLastWin32Error());
                     }
                 } finally {
                     uint ignoredProtection;
-                    NativeMethods.VirtualProtectEx(process, callSite, new UIntPtr((uint)redirect.Length), oldProtection, out ignoredProtection);
+                    NativeMethods.VirtualProtectEx(process, callSite,
+                        new UIntPtr((uint)redirect.Length), oldProtection, out ignoredProtection);
                 }
                 return AddressToIntPtr(unchecked((uint)stateAddress));
             } catch (Exception exception) {
@@ -923,10 +971,12 @@ namespace IconCatcherLoader {
         /// <param name="operandOffset">The location of the four-byte operand in the buffer.</param>
         /// <param name="nextInstruction">The process address following the instruction.</param>
         /// <param name="target">The absolute destination address.</param>
-        private static void WriteRelativeDisplacement(byte[] code, int operandOffset, long nextInstruction, uint target) {
+        private static void WriteRelativeDisplacement(byte[] code, int operandOffset, long nextInstruction,
+                uint target) {
             long displacement = target - nextInstruction;
             if (displacement < int.MinValue || displacement > int.MaxValue) {
-                throw new InvalidOperationException("The relative instruction target is outside its 32-bit range.");
+                throw new InvalidOperationException(
+                    "The relative instruction target is outside its 32-bit range.");
             }
             BitConverter.GetBytes((int)displacement).CopyTo(code, operandOffset);
         }
@@ -934,7 +984,8 @@ namespace IconCatcherLoader {
         /// <summary>Determines whether two byte arrays contain identical data.</summary>
         /// <param name="first">The first array.</param>
         /// <param name="second">The second array.</param>
-        /// <returns><see langword="true"/> if both arrays are non-null and equal; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if both arrays are non-null and equal;
+        /// otherwise, <see langword="false"/>.</returns>
         private static bool ByteArraysEqual(byte[] first, byte[] second) {
             if (first == null || second == null || first.Length != second.Length) {
                 return false;
@@ -949,13 +1000,15 @@ namespace IconCatcherLoader {
 
         /// <summary>Installs the hook that releases the Save dialog after use.</summary>
         /// <param name="process">A handle to the IconCatcher process.</param>
+        /// <param name="handler">The original Save handler to invoke.</param>
         /// <returns>The address of the installed hook.</returns>
-        private static IntPtr InstallSaveHook(IntPtr process) {
+        private static IntPtr InstallSaveHook(IntPtr process, uint handler) {
             // The hook contains 32-bit machine code for the x86 target. The allocated
             // region remains valid until the target process exits.
             const int hookSize = 40;
             IntPtr hook = NativeMethods.VirtualAllocEx(process, IntPtr.Zero,
-                new UIntPtr(hookSize), NativeMethods.MemCommit | NativeMethods.MemReserve, NativeMethods.PageExecuteReadWrite);
+                new UIntPtr(hookSize), NativeMethods.MemCommit | NativeMethods.MemReserve,
+                NativeMethods.PageExecuteReadWrite);
             if (hook == IntPtr.Zero) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
@@ -963,37 +1016,40 @@ namespace IconCatcherLoader {
             try {
                 long hookAddress64 = hook.ToInt64();
                 if (hookAddress64 < 0 || hookAddress64 > uint.MaxValue) {
-                    throw new InvalidOperationException("The hook was not allocated in the 32-bit IconCatcher address space.");
+                    throw new InvalidOperationException(
+                        "The hook was not allocated in the 32-bit IconCatcher address space.");
                 }
 
                 byte[] code = new byte[] {
-                    0x53,                                           // push ebx                 ; preserve EBX
-                    0x8B, 0xD8,                                     // mov ebx,eax              ; EBX = main form
-                    0xE8, 0x00, 0x00, 0x00, 0x00,                   // call actSaveIconExecute  ; patched below
-                    0x8B, 0x83, 0x24, 0x05, 0x00, 0x00,             // mov eax,[ebx+524h]       ; TAgSaveDialog
-                    0x85, 0xC0,                                     // test eax,eax
-                    0x74, 0x14,                                     // je short Return          ; no dialog was created
-                    0xC7, 0x83, 0x24, 0x05, 0x00, 0x00,             // mov dword ptr [ebx+524h],
-                    0x00, 0x00, 0x00, 0x00,                         // 0                        ; clear before destruction
-                    0x8B, 0x08,                                     // mov ecx,[eax]            ; object VMT
-                    0xBA, 0x01, 0x00, 0x00, 0x00,                   // mov edx,1                ; destroy the instance
-                    0xFF, 0x51, 0xFC,                               // call dword ptr [ecx-4]   ; virtual destructor
-                    0x5B,                                           // pop ebx
-                    0xC3                                            // ret
+                    0x53,                               // push ebx                 ; preserve EBX
+                    0x8B, 0xD8,                         // mov ebx,eax              ; EBX = main form
+                    0xE8, 0x00, 0x00, 0x00, 0x00,       // call actSaveIconExecute  ; patched below
+                    0x8B, 0x83, 0x24, 0x05, 0x00, 0x00, // mov eax,[ebx+524h]       ; TAgSaveDialog
+                    0x85, 0xC0,                         // test eax,eax
+                    0x74, 0x14,                         // je short Return          ; no dialog was created
+                    0xC7, 0x83, 0x24, 0x05, 0x00, 0x00, // mov dword ptr [ebx+524h],
+                    0x00, 0x00, 0x00, 0x00,             // 0                        ; clear before destruction
+                    0x8B, 0x08,                         // mov ecx,[eax]            ; object VMT
+                    0xBA, 0x01, 0x00, 0x00, 0x00,       // mov edx,1                ; destroy the instance
+                    0xFF, 0x51, 0xFC,                   // call dword ptr [ecx-4]   ; virtual destructor
+                    0x5B,                               // pop ebx
+                    0xC3                                // ret
                 };
 
                 // A CALL operand is relative to the address of the following
                 // instruction, which is hookAddress + 8 in this hook.
-                long displacement64 = ExecuteHandler - (hookAddress64 + 8);
+                long displacement64 = handler - (hookAddress64 + 8);
                 if (displacement64 < int.MinValue || displacement64 > int.MaxValue) {
-                    throw new InvalidOperationException("The original Save handler is outside the range of a relative CALL instruction.");
+                    throw new InvalidOperationException(
+                        "The original Save handler is outside the range of a relative CALL instruction.");
                 }
 
                 BitConverter.GetBytes((int)displacement64).CopyTo(code, 4);
 
                 UIntPtr written;
                 if (!NativeMethods.WriteProcessMemory(process, hook, code,
-                        new UIntPtr((uint)code.Length), out written) || written.ToUInt32() != (uint)code.Length) {
+                    new UIntPtr((uint)code.Length), out written) || written.ToUInt32()
+                        != (uint)code.Length) {
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 }
 
@@ -1010,21 +1066,37 @@ namespace IconCatcherLoader {
             }
         }
 
+        /// <summary>Redirects one action to an installed Save hook.</summary>
+        /// <param name="process">A handle to the IconCatcher process.</param>
+        /// <param name="action">The address of the action object.</param>
+        /// <param name="hook">The address of the installed machine-code hook.</param>
+        private static void RedirectActionToHook(IntPtr process, IntPtr action, IntPtr hook) {
+            long hookAddress64 = hook.ToInt64();
+            if (hookAddress64 < 0 || hookAddress64 > uint.MaxValue) {
+                throw new InvalidOperationException(
+                    "The hook address does not fit in the 32-bit TMethod.Code field.");
+            }
+            WriteHandler(process, AddOffset(action, OnExecuteOffset), (uint)hookAddress64);
+        }
+
         /// <summary>Redirects the action and both menu handlers to the installed hook.</summary>
         /// <param name="process">A handle to the IconCatcher process.</param>
         /// <param name="action">The address of the actSaveIcon object.</param>
-        /// <param name="menuCallbacks">The OnClick.Code addresses for the main and context menu items.</param>
+        /// <param name="menuCallbacks">The OnClick.Code addresses for the main and context menu items.
+        /// </param>
         /// <param name="hook">The address of the installed machine-code hook.</param>
-        private static void RedirectToHook(IntPtr process, IntPtr action, IList<IntPtr> menuCallbacks, IntPtr hook) {
+        private static void RedirectToHook(IntPtr process, IntPtr action, IList<IntPtr> menuCallbacks,
+            IntPtr hook) {
             long hookAddress64 = hook.ToInt64();
             if (hookAddress64 < 0 || hookAddress64 > uint.MaxValue) {
-                throw new InvalidOperationException("The hook address does not fit in the 32-bit TMethod.Code field.");
+                throw new InvalidOperationException(
+                    "The hook address does not fit in the 32-bit TMethod.Code field.");
             }
 
             uint hookAddress = (uint)hookAddress64;
 
             // Redirect the central TAction first.
-            WriteHandler(process, AddOffset(action, OnExecuteOffset), hookAddress);
+            RedirectActionToHook(process, action, hook);
 
             // Each menu item has a direct OnClick handler in addition to its
             // ActionLink. The direct handler takes precedence and must also be
@@ -1045,20 +1117,51 @@ namespace IconCatcherLoader {
 
             UIntPtr written;
             if (!NativeMethods.WriteProcessMemory(process, address, handlerBytes,
-                    new UIntPtr((uint)handlerBytes.Length), out written) || written.ToUInt32() != (uint)handlerBytes.Length) {
+                new UIntPtr((uint)handlerBytes.Length), out written) || written.ToUInt32()
+                    != (uint)handlerBytes.Length) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
             // Read the field back and verify the exact handler address.
             byte[] check = Read(process, address, handlerBytes.Length);
             if (check == null || BitConverter.ToUInt32(check, 0) != handler) {
-                throw new InvalidOperationException("The Save Selected redirection could not be verified.");
+                throw new InvalidOperationException("The Save redirection could not be verified.");
             }
+        }
+
+        /// <summary>Locates and validates the actiSave object through its main-form field.</summary>
+        /// <param name="process">A handle to the IconCatcher process.</param>
+        /// <param name="form">The address of the main form.</param>
+        /// <returns>The actiSave address, or <see cref="IntPtr.Zero"/> if the object is invalid.</returns>
+        private static IntPtr FindOutputSaveAction(IntPtr process, uint form) {
+            byte[] field = Read(process, AddressToIntPtr(unchecked(form + OutputSaveActionFieldOffset)),
+                sizeof(uint));
+            if (field == null) {
+                return IntPtr.Zero;
+            }
+
+            uint action = BitConverter.ToUInt32(field, 0);
+            if (action == 0) {
+                return IntPtr.Zero;
+            }
+
+            byte[] data = Read(process, AddressToIntPtr(action), OnUpdateOffset + 8);
+            if (data == null
+                    || BitConverter.ToUInt32(data, 0) != ActionVmt
+                    || BitConverter.ToUInt32(data, OnExecuteOffset) != OutputSaveHandler
+                    || BitConverter.ToUInt32(data, OnExecuteOffset + sizeof(uint)) != form
+                    || BitConverter.ToUInt32(data, OnUpdateOffset) != OutputSaveUpdateHandler
+                    || BitConverter.ToUInt32(data, OnUpdateOffset + sizeof(uint)) != form) {
+                return IntPtr.Zero;
+            }
+
+            return AddressToIntPtr(action);
         }
 
         /// <summary>Searches the address space for the actSaveIcon object.</summary>
         /// <param name="process">A handle to the IconCatcher process.</param>
-        /// <returns>The actSaveIcon address, or <see cref="IntPtr.Zero"/> if no validated object is found.</returns>
+        /// <returns>The actSaveIcon address, or <see cref="IntPtr.Zero"/> if no validated object is found.
+        /// </returns>
         private static IntPtr FindAction(IntPtr process) {
             // Both processes are x86, so addresses can be calculated as unsigned
             // 32-bit values. Convert them to IntPtr only at the Win32 boundary.
@@ -1069,7 +1172,8 @@ namespace IconCatcherLoader {
             while (address < 0x80000000u) {
                 // VirtualQueryEx describes one contiguous region with uniform attributes.
                 MemoryBasicInformation info;
-                if (NativeMethods.VirtualQueryEx(process, AddressToIntPtr(address), out info, new UIntPtr((uint)infoSize)) == UIntPtr.Zero) {
+                if (NativeMethods.VirtualQueryEx(process, AddressToIntPtr(address), out info,
+                        new UIntPtr((uint)infoSize)) == UIntPtr.Zero) {
                     break;
                 }
 
@@ -1145,7 +1249,8 @@ namespace IconCatcherLoader {
         /// <param name="form">The 32-bit address of the main form.</param>
         /// <param name="result">The collection that receives matching handler-field addresses.</param>
         /// <param name="seen">The collection used to reject duplicate addresses.</param>
-        private static void SearchMenuCallbacksInRegion(IntPtr process, uint start, uint size, uint form, List<IntPtr> result, List<uint> seen) {
+        private static void SearchMenuCallbacksInRegion(IntPtr process, uint start, uint size, uint form,
+                List<IntPtr> result, List<uint> seen) {
             const int chunkSize = 1024 * 1024;
             byte[] prefix = new byte[0];
             for (uint offset = 0; offset < size; offset += chunkSize) {
@@ -1160,7 +1265,8 @@ namespace IconCatcherLoader {
                 current.CopyTo(data, prefix.Length);
                 uint dataStart = unchecked(start + offset - (uint)prefix.Length);
                 for (int index = 0; index <= data.Length - 8; index++) {
-                    if (BitConverter.ToUInt32(data, index) != ExecuteHandler || BitConverter.ToUInt32(data, index + 4) != form) {
+                    if (BitConverter.ToUInt32(data, index) != ExecuteHandler
+                            || BitConverter.ToUInt32(data, index + 4) != form) {
                         continue;
                     }
                     uint callback = unchecked(dataStart + (uint)index);
@@ -1169,7 +1275,9 @@ namespace IconCatcherLoader {
                     }
                     uint menuItem = callback - MenuClickOffset;
                     byte[] vmt = Read(process, AddressToIntPtr(menuItem), sizeof(uint));
-                    if (vmt != null && BitConverter.ToUInt32(vmt, 0) == MenuItemVmt && !seen.Contains(callback)) {
+                    if (vmt != null
+                            && BitConverter.ToUInt32(vmt, 0) == MenuItemVmt
+                            && !seen.Contains(callback)) {
                         seen.Add(callback);
                         result.Add(AddressToIntPtr(callback));
                     }
@@ -1224,7 +1332,9 @@ namespace IconCatcherLoader {
 
                     // Both events are methods of the same main form, so their fixed
                     // Code addresses and their Self pointers must match.
-                    if (executeCode != ExecuteHandler || updateCode != UpdateHandler || executeSelf != updateSelf) {
+                    if (executeCode != ExecuteHandler
+                            || updateCode != UpdateHandler
+                            || executeSelf != updateSelf) {
                         continue;
                     }
 
@@ -1244,11 +1354,13 @@ namespace IconCatcherLoader {
             return IntPtr.Zero;
         }
 
-        /// <summary>Determines whether a candidate is the actSaveIcon object for the specified form.</summary>
+        /// <summary>Determines whether a candidate is the actSaveIcon object for the specified form.
+        /// </summary>
         /// <param name="process">A handle to the IconCatcher process.</param>
         /// <param name="action">The 32-bit candidate object address.</param>
         /// <param name="form">The 32-bit main-form address.</param>
-        /// <returns><see langword="true"/> if the candidate is valid; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the candidate is valid; otherwise, <see langword="false"/>.
+        /// </returns>
         private static bool ValidateAction(IntPtr process, uint action, uint form) {
             // The first DWORD of a Delphi object points to its virtual method table.
             byte[] vmt = Read(process, AddressToIntPtr(action), 4);
@@ -1256,7 +1368,10 @@ namespace IconCatcherLoader {
             // The form field at offset 0x46C must point back to the same object.
             byte[] field = Read(process, AddressToIntPtr(unchecked(form + (uint)ActionFieldOffset)), 4);
 
-            return vmt != null && field != null && BitConverter.ToUInt32(vmt, 0) == ActionVmt && BitConverter.ToUInt32(field, 0) == action;
+            return vmt != null
+                && field != null
+                && BitConverter.ToUInt32(vmt, 0) == ActionVmt
+                && BitConverter.ToUInt32(field, 0) == action;
         }
 
         /// <summary>
@@ -1265,7 +1380,8 @@ namespace IconCatcherLoader {
         /// <param name="process">The IconCatcher process whose lifetime is monitored.</param>
         /// <param name="processHandle">A handle used to read the shared export state.</param>
         /// <param name="saveLibraryState">The shared Save Library state address.</param>
-        private static void WatchSaveLibraryExports(Process process, IntPtr processHandle, IntPtr saveLibraryState) {
+        private static void WatchSaveLibraryExports(Process process, IntPtr processHandle,
+                IntPtr saveLibraryState) {
             uint lastExportSequence = 0;
             while (!process.HasExited) {
                 ConvertCompletedSaveLibraryExport(processHandle, saveLibraryState, ref lastExportSequence);
@@ -1280,7 +1396,8 @@ namespace IconCatcherLoader {
         /// <param name="process">A handle used to read the IconCatcher process.</param>
         /// <param name="stateAddress">The shared Save Library state address.</param>
         /// <param name="lastSequence">The last sequence number processed by the loader.</param>
-        private static void ConvertCompletedSaveLibraryExport(IntPtr process, IntPtr stateAddress, ref uint lastSequence) {
+        private static void ConvertCompletedSaveLibraryExport(IntPtr process, IntPtr stateAddress,
+                ref uint lastSequence) {
             byte[] state = Read(process, stateAddress, SaveLibraryStateSize);
             if (state == null) {
                 return;
@@ -1298,7 +1415,8 @@ namespace IconCatcherLoader {
                 NeIconLibraryConverter.ConvertToPeDll(iclPath);
             } catch (Exception exception) {
                 Debug.WriteLine(exception);
-                NativeMethods.MessageBox(IntPtr.Zero, exception.Message, "IconCatcherLoader - ICL to PE conversion", 0x10);
+                NativeMethods.MessageBox(IntPtr.Zero, exception.Message,
+                    "IconCatcherLoader - ICL to PE conversion", 0x10);
             }
         }
 
@@ -1327,7 +1445,8 @@ namespace IconCatcherLoader {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             char[] characters = new char[characterCount];
-            if (NativeMethods.MultiByteToWideChar(0, 0, bytes, bytes.Length, characters, characters.Length) != characterCount) {
+            if (NativeMethods.MultiByteToWideChar(0, 0, bytes, bytes.Length, characters, characters.Length)
+                    != characterCount) {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             return new string(characters);
@@ -1337,7 +1456,8 @@ namespace IconCatcherLoader {
         /// <param name="process">A handle to the IconCatcher process.</param>
         /// <param name="address">The address from which to read.</param>
         /// <param name="count">The required number of bytes.</param>
-        /// <returns>The requested bytes, or <see langword="null"/> if the read fails or is incomplete.</returns>
+        /// <returns>The requested bytes, or <see langword="null"/> if the read fails or is incomplete.
+        /// </returns>
         private static byte[] Read(IntPtr process, IntPtr address, int count) {
             byte[] buffer = new byte[count];
             UIntPtr read;

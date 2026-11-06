@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  **
- * Last modified for version 2.0.0.0
+ * Last modified for version 2.1.0.0
  */
 
 using System;
@@ -76,7 +76,8 @@ namespace IconCatcherLoader {
         /// <param name="processId">The identifier of the process to open.</param>
         /// <returns>A handle to the process, or <see cref="IntPtr.Zero"/> if the operation fails.</returns>
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern IntPtr OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, int processId);
+        internal static extern IntPtr OpenProcess(uint desiredAccess,
+            [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, int processId);
 
         /// <summary>Reads memory from another process.</summary>
         /// <param name="process">A handle to the process whose memory is read.</param>
@@ -84,10 +85,12 @@ namespace IconCatcherLoader {
         /// <param name="buffer">The buffer that receives the copied bytes.</param>
         /// <param name="size">The number of bytes to read.</param>
         /// <param name="bytesRead">Receives the number of bytes copied.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool ReadProcessMemory(IntPtr process, IntPtr baseAddress, [Out] byte[] buffer, UIntPtr size, out UIntPtr bytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr process, IntPtr baseAddress, [Out] byte[] buffer,
+            UIntPtr size, out UIntPtr bytesRead);
 
         /// <summary>Writes memory to another process.</summary>
         /// <param name="process">A handle to the process whose memory is modified.</param>
@@ -95,30 +98,38 @@ namespace IconCatcherLoader {
         /// <param name="buffer">The buffer containing the bytes to write.</param>
         /// <param name="size">The number of bytes to write.</param>
         /// <param name="bytesWritten">Receives the number of bytes copied.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool WriteProcessMemory(IntPtr process, IntPtr baseAddress, byte[] buffer, UIntPtr size, out UIntPtr bytesWritten);
+        internal static extern bool WriteProcessMemory(IntPtr process, IntPtr baseAddress, byte[] buffer,
+            UIntPtr size, out UIntPtr bytesWritten);
 
         /// <summary>Allocates memory in another process.</summary>
         /// <param name="process">A handle to the process in which memory is allocated.</param>
-        /// <param name="address">The preferred base address, or <see cref="IntPtr.Zero"/> to let the system choose one.</param>
+        /// <param name="address">The preferred base address, or <see cref="IntPtr.Zero"/> to let the system
+        /// choose one.</param>
         /// <param name="size">The size of the allocation, in bytes.</param>
         /// <param name="allocationType">The requested allocation type.</param>
         /// <param name="protection">The requested memory protection.</param>
-        /// <returns>The base address of the allocated region, or <see cref="IntPtr.Zero"/> if the operation fails.</returns>
+        /// <returns>The base address of the allocated region, or <see cref="IntPtr.Zero"/> if the operation
+        /// fails.</returns>
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr address, UIntPtr size, uint allocationType, uint protection);
+        internal static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr address, UIntPtr size,
+            uint allocationType, uint protection);
 
         /// <summary>Releases memory allocated in another process.</summary>
         /// <param name="process">A handle to the process that owns the allocation.</param>
         /// <param name="address">The base address of the allocation.</param>
-        /// <param name="size">The size to release; this must be zero when <paramref name="freeType"/> is MEM_RELEASE.</param>
+        /// <param name="size">The size to release; this must be zero when <paramref name="freeType"/> is
+        /// MEM_RELEASE.</param>
         /// <param name="freeType">The requested free operation.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size, uint freeType);
+        internal static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size,
+            uint freeType);
 
         /// <summary>Changes the protection of committed pages in another process.</summary>
         /// <param name="process">A handle to the process that owns the pages.</param>
@@ -126,7 +137,8 @@ namespace IconCatcherLoader {
         /// <param name="size">The size of the region, in bytes.</param>
         /// <param name="newProtection">The requested memory protection.</param>
         /// <param name="oldProtection">Receives the previous memory protection.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool VirtualProtectEx(IntPtr process, IntPtr address, UIntPtr size,
@@ -136,7 +148,8 @@ namespace IconCatcherLoader {
         /// <param name="process">A handle to the process whose instruction cache is flushed.</param>
         /// <param name="baseAddress">The first address in the region to flush.</param>
         /// <param name="size">The size of the region, in bytes.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool FlushInstructionCache(IntPtr process, IntPtr baseAddress, UIntPtr size);
@@ -146,16 +159,19 @@ namespace IconCatcherLoader {
         /// <param name="address">An address in the region to query.</param>
         /// <param name="buffer">Receives information about the region.</param>
         /// <param name="length">The size of <paramref name="buffer"/>, in bytes.</param>
-        /// <returns>The number of bytes written to <paramref name="buffer"/>, or zero if the operation fails.</returns>
+        /// <returns>The number of bytes written to <paramref name="buffer"/>, or zero if the operation fails.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern UIntPtr VirtualQueryEx(IntPtr process, IntPtr address, out MemoryBasicInformation buffer, UIntPtr length);
+        internal static extern UIntPtr VirtualQueryEx(IntPtr process, IntPtr address,
+            out MemoryBasicInformation buffer, UIntPtr length);
 
         /// <summary>Converts text from the current Windows ANSI code page to Unicode.</summary>
         /// <param name="codePage">The source code page; zero selects the current ANSI code page.</param>
         /// <param name="flags">Conversion behavior flags.</param>
         /// <param name="multiByteText">The source byte array.</param>
         /// <param name="byteCount">The number of source bytes to convert.</param>
-        /// <param name="wideText">The destination character array, or null to query its required size.</param>
+        /// <param name="wideText">The destination character array, or null to query its required size.
+        /// </param>
         /// <param name="characterCount">The capacity of the destination array.</param>
         /// <returns>The number of Unicode characters written or required.</returns>
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -164,19 +180,20 @@ namespace IconCatcherLoader {
 
         /// <summary>Closes an open object handle.</summary>
         /// <param name="handle">The handle to close.</param>
-        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if the operation succeeds; otherwise, <see langword="false"/>.
+        /// </returns>
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool CloseHandle(IntPtr handle);
 
         /// <summary>Displays a modal message box.</summary>
-        /// <param name="owner">The handle of the owner window, or <see cref="IntPtr.Zero"/> for no owner.</param>
+        /// <param name="owner">The handle of the owner window, or <see cref="IntPtr.Zero"/> for no owner.
+        /// </param>
         /// <param name="text">The message displayed in the dialog box.</param>
         /// <param name="caption">The dialog-box title.</param>
         /// <param name="type">The buttons, icon, and behavior requested for the dialog box.</param>
         /// <returns>An integer identifying the button selected by the user.</returns>
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         internal static extern int MessageBox(IntPtr owner, string text, string caption, uint type);
-
     }
 }
