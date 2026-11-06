@@ -21,12 +21,31 @@ third-party libraries. Each project writes its executable to its own
 Open `IconCatcherLoader.sln` in Visual Studio 2015 and select **Rebuild
 Solution** to build all four variants.
 
-After a Release rebuild, run `PackageRelease.bat` from the solution root. The
-script collects every Release executable, places a copy of `license.txt` beside
-each framework variant, and creates
-`IconCatcherLoader-x.x.x.x.zip` in the solution root. The version is read from
-the shared `AssemblyFileVersion` attribute. The script uses 7-Zip level 9 when
-7-Zip is available and otherwise uses .NET optimal ZIP compression.
+After a Release rebuild, run this command from the solution root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\PackageRelease.ps1
+```
+
+The script collects every Release executable, places a copy of `license.txt` beside each framework variant,
+and creates `IconCatcherLoader-x.x.x.x.zip` in the solution root. The version is
+read from the shared `AssemblyFileVersion` attribute and must match all four
+Release executables. The script uses 7-Zip level 9 when 7-Zip is available and
+otherwise uses .NET optimal ZIP compression. Only the executable and license
+are included in each framework directory; no configuration files are packaged.
+
+Signing uses the current-user settings `BUILD_SIGNER_NAME`,
+`BUILD_CERTIFICATE_THUMBPRINT`, `BUILD_SIGNTOOL_PATH`, and `BUILD_TIMESTAMP_SERVER`.
+The corresponding script parameters are `-SignerName`, `-CertificateThumbprint`,
+`-SignToolPath`, and `-TimestampServer`. The script signs staged copies with
+SHA-256 and verifies them with SignTool. Existing valid signatures are preserved;
+an existing signature that fails verification stops packaging. If timestamping
+fails, signing is retried without a timestamp. When signing is not configured
+or the certificate or tool is unavailable, unsigned files are packaged with a
+warning. Release build outputs are left unchanged. Before checking the Release
+binaries, the script removes `IconCatcherLoader.zip` and all existing
+`IconCatcherLoader-x.x.x.x.zip` packages from the solution root. If packaging
+fails, no package from an earlier run is left behind.
 
 ## Choosing a package
 
